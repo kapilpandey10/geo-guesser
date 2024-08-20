@@ -1,7 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { getDistance } from 'geolib';
 import countryCapitals from '../Country';
+
 import './ManualStreetView.css';
+
+function App() {
+    const [showDialog, setShowDialog] = useState(false);
+  
+    useEffect(() => {
+      const isMobile = window.innerWidth <= 768;
+      if (isMobile) {
+        setShowDialog(true);
+      }
+    }, []);
+  
+    const handleCloseDialog = () => {
+      setShowDialog(false);
+    };
+  
+    return (
+      <Router>
+        {showDialog && <RotateScreenDialog onClose={handleCloseDialog} />}
+        <Routes>
+          <Route path="/" element={<Welcome />} />
+          <Route path="/game" element={<Map />} />
+          {/* Other routes */}
+        </Routes>
+      </Router>
+    );
+  }
 
 const ManualStreetView = () => {
   const [location, setLocation] = useState(null);

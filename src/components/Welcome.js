@@ -13,7 +13,8 @@ const Welcome = () => {
 
   return (
     <div className="welcome-container">
-      <h1 className="typewriter">Welcome to GeoGuesser</h1>
+      <h1 className="typewriter">Welcome to Geo-Guesser</h1>
+      <h3>Made by Kapil Pandey</h3>
       <button className="play-button" onClick={handlePlayGame}>
         Play Game
       </button>

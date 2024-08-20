@@ -1,46 +1,41 @@
-import React, { useEffect, useState } from 'react';
-import { getDistance } from 'geolib';
+import React, { useState, useEffect } from 'react';
 import countryCapitals from '../Country';
-
+import FeedbackDialog from './FeedbackDialog'; // Dialog for mobile and desktop
 import './ManualStreetView.css';
-
-function App() {
-    const [showDialog, setShowDialog] = useState(false);
-  
-    useEffect(() => {
-      const isMobile = window.innerWidth <= 768;
-      if (isMobile) {
-        setShowDialog(true);
-      }
-    }, []);
-  
-    const handleCloseDialog = () => {
-      setShowDialog(false);
-    };
-  
-    return (
-      <Router>
-        {showDialog && <RotateScreenDialog onClose={handleCloseDialog} />}
-        <Routes>
-          <Route path="/" element={<Welcome />} />
-          <Route path="/game" element={<Map />} />
-          {/* Other routes */}
-        </Routes>
-      </Router>
-    );
-  }
 
 const ManualStreetView = () => {
   const [location, setLocation] = useState(null);
   const [actualCountry, setActualCountry] = useState('');
   const [guess, setGuess] = useState('');
   const [result, setResult] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [isCorrect, setIsCorrect] = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const MAX_TRIES = 10;
+
+  useEffect(() => {
+    const checkIsMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+
+    const checkIsDesktop = () => {
+      setIsDesktop(window.innerWidth > 768);
+    };
+
+    checkIsMobile();
+    checkIsDesktop();
+    window.addEventListener('resize', checkIsMobile);
+    window.addEventListener('resize', checkIsDesktop);
+
+    return () => {
+      window.removeEventListener('resize', checkIsMobile);
+      window.removeEventListener('resize', checkIsDesktop);
+    };
+  }, []);
 
   const generateRandomCoordinates = () => {
     const lat = Math.random() * 180 - 90;
@@ -64,15 +59,25 @@ const ManualStreetView = () => {
     }
   };
 
-  const initializeStreetView = (location, attempts = 0) => {
+  const initializeStreetView = async (location, attempts = 0) => {
+    setLoading(true); // Start loading
+    setLoadingProgress(0); // Reset loading progress
+    const loadingInterval = setInterval(() => {
+      setLoadingProgress((prev) => {
+        if (prev < 100) return prev + 10;
+        clearInterval(loadingInterval);
+        return 100;
+      });
+    }, 300); // Increment loading bar every 300ms
+
     const streetViewService = new window.google.maps.StreetViewService();
     streetViewService.getPanorama(
       { location, radius: 50000 },
       async (result, status) => {
         if (status === 'OK') {
-          const panorama = new window.google.maps.StreetViewPanorama(
-            document.getElementById('street-view'),
-            {
+          const panoramaElement = document.getElementById('street-view');
+          if (panoramaElement) {
+            new window.google.maps.StreetViewPanorama(panoramaElement, {
               position: result.location.latLng,
               pov: { heading: 165, pitch: 0 },
               zoom: 1,
@@ -82,29 +87,27 @@ const ManualStreetView = () => {
               linksControl: true,
               enableCloseButton: false,
               fullscreenControl: false,
-            }
-          );
+            });
 
-          window.google.maps.event.addListenerOnce(panorama, 'status_changed', async () => {
-            if (panorama.getStatus() === 'OK') {
-              const country = await fetchCountryFromCoordinates(result.location.latLng.lat(), result.location.latLng.lng());
-              if (country) {
-                setLocation(result.location.latLng);
-                setActualCountry(country);
-              }
-            } else {
-              if (attempts < MAX_TRIES) {
-                fetchAndInitialize(attempts + 1);
-              } else {
-                setError('Unable to find a valid Street View location. Please try again.');
-              }
+            const country = await fetchCountryFromCoordinates(result.location.latLng.lat(), result.location.latLng.lng());
+            if (country) {
+              setLocation(result.location.latLng);
+              setActualCountry(country);
+              setLoading(false); // Stop loading once Street View is loaded
             }
-          });
+          } else {
+            console.error('Street View element not found');
+            setResult('Failed to load Street View. Please try again.');
+            setShowDialog(true);
+            setLoading(false);
+          }
         } else {
           if (attempts < MAX_TRIES) {
             fetchAndInitialize(attempts + 1);
           } else {
-            setError('Unable to find a valid Street View location. Please try again.');
+            setResult('Unable to find a valid Street View location. Please try again.');
+            setShowDialog(true);
+            setLoading(false); // Stop loading on error
           }
         }
       }
@@ -112,10 +115,8 @@ const ManualStreetView = () => {
   };
 
   const fetchAndInitialize = async (attempts = 0) => {
-    setLoading(true);
     const randomLocation = generateRandomCoordinates();
-    initializeStreetView(randomLocation, attempts);
-    setLoading(false);
+    await initializeStreetView(randomLocation, attempts);
   };
 
   useEffect(() => {
@@ -123,76 +124,58 @@ const ManualStreetView = () => {
   }, []);
 
   const handleTryAnother = () => {
-    setError('');
     setResult('');
     setGuess('');
     setActualCountry('');
-    setFeedback('');
     setIsCorrect(false);
+    setShowDialog(false);
     fetchAndInitialize();
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
-  
+
     const normalizedGuess = guess.trim().toLowerCase();
     const normalizedActualCountry = actualCountry.toLowerCase();
     const guessedCorrectly = normalizedGuess === normalizedActualCountry;
     const isValidCountry = Object.keys(countryCapitals).some(
       country => country.toLowerCase() === normalizedGuess
     );
-  
+
+    let feedbackMessage = '';
+
     if (guessedCorrectly) {
-      setFeedback('correct');
+      feedbackMessage = `🎉 Congratulations! You guessed correctly. The country is ${actualCountry}.`;
       setIsCorrect(true);
-      setResult(`🎉 Congratulations! You guessed correctly. The country is ${actualCountry}.`);
     } else if (!isValidCountry) {
-      setFeedback('invalid');
-      setResult(`❌ Your guess "${guess}" is incorrect. This is a photo from ${actualCountry}.`);
+      feedbackMessage = `❌ Your guess "${guess}" is incorrect. This is a photo from ${actualCountry}.`;
+      setIsCorrect(false);
     } else {
-      const guessedCountryCoords = countryCapitals[Object.keys(countryCapitals).find(
-        country => country.toLowerCase() === normalizedGuess
-      )];
-      const actualCountryCoords = countryCapitals[actualCountry];
-  
-      if (guessedCountryCoords && actualCountryCoords) {
-        try {
-          const distance = getDistance(
-            { latitude: guessedCountryCoords.lat, longitude: guessedCountryCoords.lng },
-            { latitude: actualCountryCoords.lat, longitude: actualCountryCoords.lng }
-          );
-  
-          let feedbackMessage;
-          if (distance / 1000 <= 500) {
-            feedbackMessage = `✨ Wow, Almost close! Your guess is only ${Math.round(distance / 1000)} km away from ${actualCountry} 😮.`;
-          } else if (distance / 1000 <= 1000) {
-            feedbackMessage = `Not too far! Your guess is ${Math.round(distance / 1000)} km away from ${actualCountry}. 🗺️`;
-          } else {
-            feedbackMessage = `Your guess is ${Math.round(distance / 1000)} km away from the actual location in ${actualCountry}. 😔`;
-          }
-          setFeedback('far');
-          setResult(feedbackMessage);
-        } catch (error) {
-          console.error('Error calculating distance:', error);
-          setFeedback('unknown');
-          setResult(`❓ Could not calculate the distance. Your guess "${guess}" might be ${guessedCorrectly ? 'correct' : `incorrect. The correct answer is ${actualCountry}`}.`);
-        }
-      } else {
-        setFeedback('unknown');
-        setResult(`❓ Could not calculate the distance. Your guess "${guess}" might ${guessedCorrectly ? 'correct' : `incorrect. This is not countable, Location not identified.`}.`);
-      }
+      feedbackMessage = `❌ Your guess is incorrect. The correct answer is ${actualCountry}.`;
+      setIsCorrect(false);
     }
+
+    setResult(feedbackMessage);
+    setShowDialog(true);
   };
-  
+
+  const handleCloseDialog = () => {
+    setShowDialog(false);
+    setResult(''); // Clear the result when dialog is closed
+  };
 
   return (
     <div style={{ position: 'relative', height: '100vh', overflow: 'hidden', fontFamily: 'Arial, sans-serif' }}>
-      {loading && <div style={{ textAlign: 'center', marginTop: '20px' }}>Loading...</div>}
-      {!loading && !error && <div id="street-view" style={{ width: '100%', height: '80%' }}></div>}
-      {error && (
-        <div style={{ textAlign: 'center', color: 'red', marginTop: '20px' }}>{error}</div>
+      {loading && (
+        <div style={{ textAlign: 'center', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+          <div className="loading-bar-container">
+            <div className="loading-bar" style={{ width: `${loadingProgress}%` }}></div>
+          </div>
+          Loading {loadingProgress}%
+        </div>
       )}
-      <form onSubmit={handleSubmit} style={{ padding: '20px', textAlign: 'center' }}>
+      <div id="street-view" style={{ width: '100%', height: '80%', display: loading ? 'none' : 'block' }}></div>
+      <form onSubmit={handleSubmit} style={{ padding: '20px', textAlign: 'center', display: loading ? 'none' : 'block' }}>
         <label style={{ fontSize: '1.2em', marginRight: '10px' }}>
           Guess the country:
         </label>
@@ -239,62 +222,51 @@ const ManualStreetView = () => {
           Try Another
         </button>
       </form>
-      {result && (
-        <div
-          style={{
-            textAlign: 'center',
-            marginTop: '10px',
-            padding: '20px',
-            fontSize: '1.5em',
-            color: feedback === 'correct' ? '#28a745' : feedback === 'far' ? '#dc3545' : feedback === 'invalid' ? '#ffc107' : '#000',
-            backgroundColor: feedback === 'correct' ? '#d4edda' : feedback === 'far' ? '#f8d7da' : feedback === 'invalid' ? '#fff3cd' : '#f8f9fa',
-            borderRadius: '10px',
-            animation: 'fadeIn 1s',
-          }}
-        >
-          {result}
-        </div>
+
+      {showDialog && (
+        <FeedbackDialog
+          message={result}
+          onClose={handleCloseDialog}
+          isCorrect={isCorrect}
+          isMobile={isMobile}
+        />
       )}
-      {isCorrect && (
-        <div className="congratulations-overlay">
-          <h1>Congratulations!</h1>
-          <div className="stars">
-            {Array.from({ length: 10 }).map((_, index) => (
-              <span key={index} className="star">⭐</span>
-            ))}
-          </div>
-          <button
-            onClick={handleTryAnother}
-            className="play-more-button"
-          >
-            Play More
-          </button>
-        </div>
-      )}      <style>
-      {`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        .play-more-button {
-          margin-top: 20px;
-          padding: 10px 20px;
-          font-size: 1.2em;
-          border-radius: 5px;
-          border: none;
-          background-color: #ffc107;
-          color: black;
-          cursor: pointer;
-          transition: background-color 0.3s ease;
-        }
-        .play-more-button:hover {
-          background-color: #e0a800;
-        }
-      `}
-    </style>
-  </div>
-);
+
+      <style>
+        {`
+          .loading-bar-container {
+            width: 80%;
+            height: 10px;
+            background-color: #f3f3f3;
+            margin: 0 auto;
+            border-radius: 5px;
+            overflow: hidden;
+          }
+
+          .loading-bar {
+            height: 100%;
+            background-color: #09f;
+            transition: width 0.3s ease;
+          }
+
+          .play-more-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 1.2em;
+            border-radius: 5px;
+            border: none;
+            background-color: #ffc107;
+            color: black;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+          }
+          .play-more-button:hover {
+            background-color: #e0a800;
+          }
+        `}
+      </style>
+    </div>
+  );
 };
 
 export default ManualStreetView;
-

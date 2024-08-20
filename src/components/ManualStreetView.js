@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import countryCapitals from '../Country';
-import FeedbackDialog from './FeedbackDialog'; // Dialog for mobile and desktop
+import FeedbackDialog from './FeedbackDialog';
 import './ManualStreetView.css';
 
-const MAX_TRIES = 10;  // Define MAX_TRIES here
+const MAX_TRIES = 50; // Number of tries before considering failure
 
 const ManualStreetView = () => {
   const [location, setLocation] = useState(null);
@@ -15,25 +15,17 @@ const ManualStreetView = () => {
   const [isCorrect, setIsCorrect] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
     const checkIsMobile = () => {
       setIsMobile(window.innerWidth <= 768);
     };
 
-    const checkIsDesktop = () => {
-      setIsDesktop(window.innerWidth > 768);
-    };
-
     checkIsMobile();
-    checkIsDesktop();
     window.addEventListener('resize', checkIsMobile);
-    window.addEventListener('resize', checkIsDesktop);
 
     return () => {
       window.removeEventListener('resize', checkIsMobile);
-      window.removeEventListener('resize', checkIsDesktop);
     };
   }, []);
 
@@ -59,20 +51,15 @@ const ManualStreetView = () => {
     }
   };
 
-  const initializeStreetView = async (location, attempts = 0) => {
-    setLoading(true); // Start loading
-    setLoadingProgress(0); // Reset loading progress
-    const loadingInterval = setInterval(() => {
-      setLoadingProgress((prev) => {
-        if (prev < 100) return prev + 10;
-        clearInterval(loadingInterval);
-        return 100;
-      });
-    }, 300); // Increment loading bar every 300ms
+  const initializeStreetView = async (attempts = 0) => {
+    setLoading(true);
+    setLoadingProgress(0);
 
+    const randomLocation = generateRandomCoordinates();
     const streetViewService = new window.google.maps.StreetViewService();
+
     streetViewService.getPanorama(
-      { location, radius: 50000 },
+      { location: randomLocation, radius: 500000 },
       async (result, status) => {
         if (status === 'OK') {
           const panoramaElement = document.getElementById('street-view');
@@ -93,34 +80,39 @@ const ManualStreetView = () => {
             if (country) {
               setLocation(result.location.latLng);
               setActualCountry(country);
-              setLoading(false); // Stop loading once Street View is loaded
+              setLoading(false);
+            } else {
+              if (attempts < MAX_TRIES) {
+                setLoadingProgress((attempts + 1) * (100 / MAX_TRIES)); // Update loading progress
+                initializeStreetView(attempts + 1); // Try another location
+              } else {
+                handleError('Unable to determine country after multiple attempts');
+              }
             }
           } else {
-            console.error('Street View element not found');
-            setResult('Failed to load Street View. Please try again.');
-            setShowDialog(true);
-            setLoading(false);
+            handleError('Street View element not found');
           }
         } else {
           if (attempts < MAX_TRIES) {
-            fetchAndInitialize(attempts + 1);
+            setLoadingProgress((attempts + 1) * (100 / MAX_TRIES)); // Update loading progress
+            initializeStreetView(attempts + 1); // Retry with a different random location
           } else {
-            setResult('Unable to find a valid Street View location. Please try again.');
-            setShowDialog(true);
-            setLoading(false); // Stop loading on error
+            handleError('Unable to find a valid Street View location after multiple attempts');
           }
         }
       }
     );
   };
 
-  const fetchAndInitialize = async (attempts = 0) => {
-    const randomLocation = generateRandomCoordinates();
-    await initializeStreetView(randomLocation, attempts);
+  const handleError = (message) => {
+    console.error(message);
+    setResult(message);
+    setShowDialog(true);
+    setLoading(false);
   };
 
   useEffect(() => {
-    fetchAndInitialize();
+    initializeStreetView();
   }, []);
 
   const handleTryAnother = () => {
@@ -129,7 +121,7 @@ const ManualStreetView = () => {
     setActualCountry('');
     setIsCorrect(false);
     setShowDialog(false);
-    fetchAndInitialize();
+    initializeStreetView();
   };
 
   const handleSubmit = (event) => {

@@ -3,6 +3,8 @@ import countryCapitals from '../Country';
 import FeedbackDialog from './FeedbackDialog'; // Dialog for mobile and desktop
 import './ManualStreetView.css';
 
+const MAX_TRIES = 10;  // Define MAX_TRIES here
+
 const ManualStreetView = () => {
   const [location, setLocation] = useState(null);
   const [actualCountry, setActualCountry] = useState('');
@@ -14,8 +16,6 @@ const ManualStreetView = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
-
-  const MAX_TRIES = 10;
 
   useEffect(() => {
     const checkIsMobile = () => {

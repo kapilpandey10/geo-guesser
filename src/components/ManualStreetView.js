@@ -3,7 +3,7 @@ import countryCapitals from '../Country';
 import FeedbackDialog from './FeedbackDialog';
 import './ManualStreetView.css';
 
-const MAX_TRIES = 50; // Number of tries before considering failure
+const MAX_TRIES = 50;
 
 const ManualStreetView = () => {
   const [location, setLocation] = useState(null);
@@ -51,9 +51,13 @@ const ManualStreetView = () => {
     }
   };
 
+  const updateProgress = (percentage) => {
+    setLoadingProgress(percentage);
+  };
+
   const initializeStreetView = async (attempts = 0) => {
     setLoading(true);
-    setLoadingProgress(0);
+    updateProgress(0);
 
     const randomLocation = generateRandomCoordinates();
     const streetViewService = new window.google.maps.StreetViewService();
@@ -64,6 +68,8 @@ const ManualStreetView = () => {
         if (status === 'OK') {
           const panoramaElement = document.getElementById('street-view');
           if (panoramaElement) {
+            updateProgress(25); // Update progress after finding the location
+
             new window.google.maps.StreetViewPanorama(panoramaElement, {
               position: result.location.latLng,
               pov: { heading: 165, pitch: 0 },
@@ -76,25 +82,24 @@ const ManualStreetView = () => {
               fullscreenControl: false,
             });
 
+            updateProgress(50); // Update progress after initializing the panorama
+
             const country = await fetchCountryFromCoordinates(result.location.latLng.lat(), result.location.latLng.lng());
             if (country) {
+              updateProgress(75); // Update progress after fetching country details
+
               setLocation(result.location.latLng);
               setActualCountry(country);
               setLoading(false);
+              updateProgress(100); // Complete the progress
             } else {
-              if (attempts < MAX_TRIES) {
-                setLoadingProgress((attempts + 1) * (100 / MAX_TRIES)); // Update loading progress
-                initializeStreetView(attempts + 1); // Try another location
-              } else {
-                handleError('Unable to determine country after multiple attempts');
-              }
+              handleError("Country couldn't be determined");
             }
           } else {
             handleError('Street View element not found');
           }
         } else {
           if (attempts < MAX_TRIES) {
-            setLoadingProgress((attempts + 1) * (100 / MAX_TRIES)); // Update loading progress
             initializeStreetView(attempts + 1); // Retry with a different random location
           } else {
             handleError('Unable to find a valid Street View location after multiple attempts');
@@ -109,6 +114,7 @@ const ManualStreetView = () => {
     setResult(message);
     setShowDialog(true);
     setLoading(false);
+    updateProgress(100); // Ensure progress completes even if there's an error
   };
 
   useEffect(() => {
@@ -140,10 +146,10 @@ const ManualStreetView = () => {
       feedbackMessage = `🎉 Congratulations! You guessed correctly. The country is ${actualCountry}.`;
       setIsCorrect(true);
     } else if (!isValidCountry) {
-      feedbackMessage = `❌ Your guess "${guess}" is incorrect. This is a photo from ${actualCountry}.`;
+      feedbackMessage = `❌ Your guess "${guess}" is incorrect. This is a photo from ${actualCountry ? actualCountry : "an unknown location"}.`;
       setIsCorrect(false);
     } else {
-      feedbackMessage = `❌ Your guess is incorrect. The correct answer is ${actualCountry}.`;
+      feedbackMessage = `❌ Your guess is incorrect. The correct answer is ${actualCountry ? actualCountry : "an unknown location"}.`;
       setIsCorrect(false);
     }
 
